@@ -2,219 +2,207 @@
 
 # ClaudeSwift
 
-**The Swift platform for Claude AI — SDK, tools, and apps for Apple developers.**
+**The Swift platform for Claude AI. SDK + agent framework for production apps.**
 
 [![Swift 6.0+](https://img.shields.io/badge/Swift-6.0+-F05138.svg?style=flat&logo=swift&logoColor=white)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20watchOS%20%7C%20tvOS%20%7C%20visionOS%20%7C%20Linux-007AFF.svg?style=flat)](https://developer.apple.com)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%20%7C%20macOS%20%7C%20watchOS%20%7C%20tvOS%20%7C%20visionOS-007AFF.svg?style=flat)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-34D058.svg?style=flat)](https://github.com/ClaudeSwift/ClaudeSwiftSDK/blob/main/LICENSE)
 
 </div>
 
 ---
 
-## Overview
+## What This Is
 
-ClaudeSwift is an open-source organization building production-grade Swift tools for [Anthropic's Claude API](https://www.anthropic.com/claude). Our mission is to provide the most idiomatic, type-safe, and performant Claude integration for the Apple ecosystem and beyond.
+**[ClaudeSwiftSDK](https://github.com/ClaudeSwift/ClaudeSwiftSDK)** is a single Swift package that ships four libraries:
 
-**What we build:**
+| Library | What it does |
+|---------|-------------|
+| **ClaudeSwift** | Full Claude API — messages, streaming, vision, tools, sessions, context management |
+| **MemoryKit** | RAG pipeline, vector search, knowledge bases |
+| **AgentKit** | Agent framework — ReAct, plan-and-execute, multi-agent, tool system |
+| **AgentKitUI** | SwiftUI components — chat views, activity timelines, tool inspectors |
 
-| Repository | Description | Status |
-|------------|-------------|--------|
-| [ClaudeSwiftSDK](https://github.com/ClaudeSwift/ClaudeSwiftSDK) | Core Swift SDK for the Claude API | Stable |
-| [ClaudeMacOSMenuBar](https://github.com/ClaudeSwift/ClaudeMacOSMenuBar) | macOS menu bar app for AI text enhancement | Beta |
-| [ClaudeBatchCLI](https://github.com/ClaudeSwift/ClaudeBatchCLI) | High-scale batch inference CLI | Beta |
+Zero external dependencies. Swift 6 strict concurrency. Every agent is an actor.
+
+**There is no other Swift agent framework.** LangGraph, CrewAI, Claude Agent SDK — all Python or TypeScript. This is the only option for native Apple development.
 
 ---
 
-## ClaudeSwiftSDK
+## What You Can Build
 
-The core SDK. Zero dependencies. Swift 6 strict concurrency. Cross-platform support for iOS, macOS, watchOS, tvOS, visionOS, and Linux.
+### AI coding assistant for macOS
 
 ```swift
-import ClaudeSwift
+let agent = CodeAgent(client: client, workingDirectory: "~/Projects/MyApp")
+let result = try await agent.run("Find the failing test, fix the bug, verify the build passes")
+```
 
-let client = ClaudeClient(apiKey: "sk-ant-...")
+CodeAgent comes pre-wired with file system, shell, and code execution tools. It reads files, runs `swift build`, edits code, and iterates until the job is done.
 
-let response = try await client.messages.create(
-    model: .sonnet4_5,
-    maxTokens: 1024,
-    messages: [.user("Hello, Claude!")]
+### Customer support agent for iOS
+
+```swift
+let supportAgent = ReActAgent(
+    client: client,
+    tools: [
+        orderLookupTool,
+        refundTool,
+        escalationTool,
+        knowledgeBaseTool
+    ],
+    configuration: AgentConfiguration(
+        model: .sonnet4_5,
+        systemPrompt: "You are a support agent for Acme Corp. Look up orders, process refunds up to $50, escalate anything else.",
+        maxIterations: 15
+    )
+)
+
+// Drop-in SwiftUI chat interface
+struct SupportView: View {
+    var body: some View {
+        AgentChatView(agent: supportAgent)
+    }
+}
+```
+
+### Research pipeline with multiple specialists
+
+```swift
+let supervisor = Supervisor(
+    client: client,
+    agents: [
+        ReActAgent(name: "researcher", client: client, tools: [searchTool, webScrapeTool]),
+        ReActAgent(name: "analyst", client: client, tools: [calculatorTool, chartTool]),
+        ReActAgent(name: "writer", client: client, tools: [fileSystemTool]),
+    ],
+    model: .opus4_6
+)
+
+let result = try await supervisor.run(
+    task: "Research Q4 revenue trends for the top 5 SaaS companies, analyze growth patterns, write a summary report"
 )
 ```
 
-### Key Features
+The supervisor delegates subtasks to the right agent, aggregates results, and synthesizes a final output.
 
-| Feature | Description |
-|---------|-------------|
-| Messages API | Complete coverage: create, stream, tool use, vision, batch |
-| Prompt Caching | `cacheControl: .ephemeral` with cache hit/miss metadata |
-| Streaming | `AsyncThrowingStream` with proper cancellation propagation |
-| Extensibility | `ClaudeRequestInterceptor` and `ClaudeResponseObserver` protocols |
-| Retry Policies | Exponential backoff with jitter, configurable per-client |
-| Session Management | SwiftData-backed conversation persistence |
-| MemoryKit | Vector store, RAG pipeline, knowledge base for retrieval-augmented generation |
-| Test Coverage | 74 tests passing |
+### RAG-powered knowledge assistant
 
-### Installation
+```swift
+let store = VectorStore()
+let kb = KnowledgeBase(store: store)
+
+// Ingest your docs
+for doc in companyDocs {
+    try await kb.addDocument(doc.text, category: doc.category)
+}
+
+// Agent with long-term memory
+let bridge = AgentMemoryBridge(knowledgeBase: kb)
+let context = try await bridge.retrieveContext(for: userQuestion)
+
+let agent = ReActAgent(
+    client: client,
+    tools: [searchTool, calculatorTool],
+    configuration: AgentConfiguration(
+        systemPrompt: "You are a knowledge assistant.\n\n\(context)"
+    )
+)
+```
+
+### visionOS spatial AI assistant
+
+```swift
+// Works on every Apple platform including visionOS
+let agent = ReActAgent(client: client, tools: spatialTools)
+
+struct ImmersiveAssistant: View {
+    @State var vm = AgentViewModel()
+
+    var body: some View {
+        VStack {
+            AgentActivityView(viewModel: vm)
+            Button("Analyze Scene") {
+                vm.run(agent: agent, input: "Describe what's in the user's environment")
+            }
+        }
+    }
+}
+```
+
+---
+
+## Production Capabilities
+
+This isn't a toy wrapper. It's infrastructure for shipping real apps.
+
+**SDK layer:**
+- Automatic retry with exponential backoff and jitter (429, 5xx)
+- Keychain credential storage for production key management
+- Request interceptors and response observers for logging, metrics, auth
+- SwiftData session persistence with import/export
+- Context window management with automatic trimming strategies
+- Prompt caching support (`cacheControl: .ephemeral`)
+
+**Agent layer:**
+- Configurable stop conditions: max iterations, max tokens, keyword triggers, custom predicates
+- Full tool call audit trail with timing data (ToolCallRecord)
+- AgentSnapshot for serializing agent state to JSON
+- Working memory (key-value facts + scratchpad) per agent
+- MemoryKit bridge for persistent knowledge across sessions
+
+**Multi-agent layer:**
+- AgentTeam: parallel execution (`runAll`) and sequential pipelines
+- Supervisor: LLM-orchestrated delegation with automatic tool routing
+- Handoff protocol for agent-to-agent transfers with context
+
+**UI layer:**
+- `@Observable` AgentViewModel — bind to any SwiftUI view
+- AgentChatView: full chat interface with activity panel in one line
+- AgentActivityView: live event timeline with icons, durations, token counts
+- ToolCallView: expandable cards with input/output inspection
+
+**Testing:**
+- MockURLProtocol for deterministic API testing without network calls
+- 116 tests across the full stack
+- Every public type is `Sendable` — no concurrency warnings in Swift 6 strict mode
+
+---
+
+## Install
 
 ```swift
 // Package.swift
 dependencies: [
     .package(url: "https://github.com/ClaudeSwift/ClaudeSwiftSDK.git", from: "1.0.0")
 ]
+
+// Import what you need
+.target(name: "MyApp", dependencies: [
+    "ClaudeSwift",    // SDK only
+    "MemoryKit",      // + RAG and vector search
+    "AgentKit",       // + Agent framework
+    "AgentKitUI",     // + SwiftUI components
+])
 ```
-
----
-
-## ClaudeMacOSMenuBar
-
-AI-powered text enhancement that lives in your menu bar. Built for developers, writers, and anyone who works with text.
-
-**Workflow:** Copy text → select an enhancement → paste the improved version.
-
-### Available Enhancements
-
-- Grammar and Spelling
-- Professional Tone
-- Casual Tone
-- Make Concise
-- Expand and Detail
-- Summarize
-- Translate to English
-
-### Quick Start
-
-```bash
-git clone https://github.com/ClaudeSwift/ClaudeMacOSMenuBar.git
-cd ClaudeMacOSMenuBar && swift run ClaudeMacOSMenuBar
-```
-
-Built with SwiftUI `MenuBarExtra`, actor-based concurrency, and ClaudeSwiftSDK.
-
----
-
-## ClaudeBatchCLI
-
-Process thousands of prompts concurrently from the command line. Designed for high-scale batch inference workflows.
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-
-claude-batch -i prompts.jsonl -o results.jsonl -w 10 --verbose
-```
-
-### Features
-
-| Feature | Description |
-|---------|-------------|
-| JSONL I/O | One prompt per line, one result per line |
-| Concurrency | Configurable parallel workers with `-w` flag |
-| Rate Limiting | Respects API limits with exponential backoff |
-| Token Accounting | Input/output tokens, cache hits, latency per request |
-| Metrics | Throughput, success rate, cost estimation on completion |
-| Cross-Platform | Runs on macOS and Linux |
-
-### Quick Start
-
-```bash
-git clone https://github.com/ClaudeSwift/ClaudeBatchCLI.git
-cd ClaudeBatchCLI && swift build -c release
-```
-
----
-
-## Why ClaudeSwift?
-
-| | ClaudeSwift | Python SDK | TypeScript SDK |
-|---|-------------|------------|----------------|
-| Language | Swift 6 | Python 3.8+ | TypeScript/Node |
-| Concurrency | Actors + async/await | asyncio | Promises |
-| Type Safety | Compile-time enums | Runtime dicts | Partial types |
-| Dependencies | Zero | httpx, pydantic, etc. | node-fetch, etc. |
-| Apple Platforms | Native support | No | No |
-| Server-Side | macOS + Linux | Yes | Yes |
-
-### Design Principles
-
-1. **Idiomatic Swift** — Leverages Swift 6 features: actors, async/await, structured concurrency
-2. **Type-Safe** — Enums for models, errors, and parameters; compile-time guarantees
-3. **Zero Dependencies** — Pure Swift implementation, no external packages
-4. **Production-Ready** — Comprehensive error handling, retry logic, and test coverage
-5. **Cross-Platform** — iOS, macOS, watchOS, tvOS, visionOS, and Linux support
-
----
-
-## Getting Started
-
-### Step 1: Get an API Key
-
-Sign up at [console.anthropic.com](https://console.anthropic.com) and create an API key.
-
-### Step 2: Choose Your Entry Point
-
-| Use Case | Recommended Tool |
-|----------|------------------|
-| Building an iOS/macOS app | [ClaudeSwiftSDK](https://github.com/ClaudeSwift/ClaudeSwiftSDK) |
-| Daily productivity tool | [ClaudeMacOSMenuBar](https://github.com/ClaudeSwift/ClaudeMacOSMenuBar) |
-| Batch processing at scale | [ClaudeBatchCLI](https://github.com/ClaudeSwift/ClaudeBatchCLI) |
-
-### Step 3: Install and Use
-
-```swift
-// Package.swift
-dependencies: [
-    .package(url: "https://github.com/ClaudeSwift/ClaudeSwiftSDK.git", from: "1.0.0")
-]
-```
-
----
-
-## Contributing
-
-Contributions are welcome across all repositories. Each repo includes a `CONTRIBUTING.md` with setup instructions.
-
-| Action | Link |
-|--------|------|
-| Report a bug | [Issue Tracker](https://github.com/ClaudeSwift/ClaudeSwiftSDK/issues/new?template=bug_report.md) |
-| Request a feature | [Feature Requests](https://github.com/ClaudeSwift/ClaudeSwiftSDK/issues/new?template=feature_request.md) |
-| Read the source | [ClaudeSwiftSDK Repository](https://github.com/ClaudeSwift/ClaudeSwiftSDK) |
-
-**Security:** Report vulnerabilities via [GitHub Security Advisories](https://github.com/ClaudeSwift/ClaudeSwiftSDK/security/advisories/new). Do not open public issues for security concerns.
 
 ---
 
 ## Requirements
 
-| Platform | Minimum Version |
-|----------|-----------------|
+| | Minimum |
+|---|---------|
 | Swift | 6.0+ |
-| iOS | 16.0+ |
-| macOS | 13.0+ |
+| iOS | 16.0+ (UI: 17.0+) |
+| macOS | 13.0+ (UI: 14.0+) |
 | watchOS | 9.0+ |
 | tvOS | 16.0+ |
 | visionOS | 1.0+ |
-| Linux | Ubuntu 20.04+ |
 
 ---
 
-## Community and Support
+## Contributing
 
-- **Issues:** [GitHub Issues](https://github.com/ClaudeSwift/ClaudeSwiftSDK/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/ClaudeSwift/ClaudeSwiftSDK/discussions)
-- **Security:** security@claudeswift.org
+[Issue tracker](https://github.com/ClaudeSwift/ClaudeSwiftSDK/issues) &middot; [Source code](https://github.com/ClaudeSwift/ClaudeSwiftSDK) &middot; Security: security@claudeswift.org
 
----
-
-## License
-
-All ClaudeSwift projects are released under the MIT License. See individual repositories for details.
-
----
-
-<div align="center">
-
-**Built by developers, for developers.**
-
-ClaudeSwift is not affiliated with Anthropic PBC. Claude and Anthropic are trademarks of Anthropic PBC.
-
-</div>
+MIT License. Not affiliated with Anthropic PBC.
